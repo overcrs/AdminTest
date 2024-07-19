@@ -3,7 +3,7 @@ local Players = game:GetService("Players")
 local player = Players.LocalPlayer
 
 -- URL to the server-side script in your GitHub repository
-local serverScriptUrl = "https://raw.githubusercontent.com/yourusername/yourrepo/main/AdminScript212.lua"
+local serverScriptUrl = "https://raw.githubusercontent.com/overcrs/AdminTest/main/AdminServer.lua"
 
 -- Function to fetch the script content from GitHub
 local function fetchScript(url)
