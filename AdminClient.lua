@@ -1,30 +1,14 @@
-local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local player = Players.LocalPlayer
 
--- URL to the server-side script in your GitHub repository
-local serverScriptUrl = "https://raw.githubusercontent.com/overcrs/AdminTest/main/AdminServer.lua"
+local function onPlayerChatted(player, message)
+    -- Insert client-side logic here if needed
+end
 
--- Function to fetch the script content from GitHub
-local function fetchScript(url)
-    local success, result = pcall(function()
-        return HttpService:GetAsync(url)
+Players.PlayerAdded:Connect(function(player)
+    player.Chatted:Connect(function(message)
+        if message:sub(1, 1) == ";" then
+            onPlayerChatted(player, message:sub(2))
+        end
     end)
-    if success then
-        return result
-    else
-        warn("Failed to fetch script: " .. result)
-        return nil
-    end
-end
-
--- Fetch and load the server-side script
-local serverScriptContent = fetchScript(serverScriptUrl)
-if serverScriptContent then
-    local func, err = loadstring(serverScriptContent)
-    if func then
-        func()
-    else
-        warn("Failed to load script: " .. err)
-    end
-end
+end)
