@@ -1,130 +1,97 @@
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
-local BansDataStore = DataStoreService:GetDataStore("BansDataStore")
+local BanDataStore = DataStoreService:GetDataStore("BanList")
 
 local GroupID = 1252054
 local OwnerRank = 255
 local AdminRank = 253
 local ModeratorRank = 252
 
--- Check if a player has the required rank
-local function hasPermission(player, requiredRank)
-	local rank = player:GetRankInGroup(GroupID)
-	return rank >= requiredRank
+local MainOwnerUserID = 65687769
+
+local function isOwner(player)
+    return player.UserId == MainOwnerUserID or player:GetRankInGroup(GroupID) == OwnerRank
 end
 
--- Fetch the player by username or user ID
-local function getPlayerByNameOrID(identifier, requestingPlayer)
-	if identifier:lower() == "me" then
-		return requestingPlayer
-	end
-
-	for _, player in pairs(Players:GetPlayers()) do
-		if tonumber(identifier) then
-			if player.UserId == tonumber(identifier) then
-				return player
-			end
-		else
-			if player.Name:lower():find(identifier:lower()) or player.DisplayName:lower():find(identifier:lower()) then
-				return player
-			end
-		end
-	end
-	return nil
+local function isAdmin(player)
+    return player:GetRankInGroup(GroupID) == AdminRank or isOwner(player)
 end
 
--- Ban and unban functions
+local function isModerator(player)
+    return player:GetRankInGroup(GroupID) == ModeratorRank or isAdmin(player)
+end
+
+local function isBanned(userId)
+    local success, isBanned = pcall(function()
+        return BanDataStore:GetAsync(tostring(userId))
+    end)
+    if success then
+        return isBanned
+    else
+        warn("Failed to access BanDataStore")
+        return false
+    end
+end
+
 local function banPlayer(userId)
-	local success, err = pcall(function()
-		BansDataStore:SetAsync(tostring(userId), true)
-	end)
-	if not success then
-		warn("Failed to ban player: " .. err)
-	end
+    local success, result = pcall(function()
+        BanDataStore:SetAsync(tostring(userId), true)
+    end)
+    if not success then
+        warn("Failed to ban player: " .. result)
+    end
 end
 
 local function unbanPlayer(userId)
-	local success, err = pcall(function()
-		BansDataStore:RemoveAsync(tostring(userId))
-	end)
-	if not success then
-		warn("Failed to unban player: " .. err)
-	end
+    local success, result = pcall(function()
+        BanDataStore:RemoveAsync(tostring(userId))
+    end)
+    if not success then
+        warn("Failed to unban player: " .. result)
+    end
 end
 
-local function isPlayerBanned(userId)
-	local success, result = pcall(function()
-		return BansDataStore:GetAsync(tostring(userId))
-	end)
-	if success then
-		return result == true
-	else
-		warn("Failed to check if player is banned: " .. result)
-		return false
-	end
+local function findPlayerByName(partialName)
+    for _, player in ipairs(Players:GetPlayers()) do
+        if string.lower(player.Name):sub(1, #partialName) == string.lower(partialName) then
+            return player
+        end
+    end
+    return nil
 end
 
--- Commands
-local commands = {
-	["kick"] = function(sender, target)
-		if not hasPermission(sender, ModeratorRank) then
-			return
-		end
-		local targetPlayer = getPlayerByNameOrID(target, sender)
-		if targetPlayer then
-			targetPlayer:Kick("You have been kicked from the game.")
-		end
-	end,
+local function handleCommand(player, message)
+    if string.sub(message, 1, 1) ~= ";" then return end
 
-	["ban"] = function(sender, target)
-		if not hasPermission(sender, AdminRank) then
-			return
-		end
-		local targetPlayer = getPlayerByNameOrID(target, sender)
-		if targetPlayer then
-			banPlayer(targetPlayer.UserId)
-			targetPlayer:Kick("You have been banned from the game.")
-		end
-	end,
+    local splitMessage = string.split(string.sub(message, 2), " ")
+    local command = splitMessage[1]
+    local targetName = splitMessage[2]
+    local targetPlayer = findPlayerByName(targetName) or Players:GetPlayerByUserId(tonumber(targetName))
 
-	["unban"] = function(sender, target)
-		if not hasPermission(sender, AdminRank) then
-			return
-		end
-		local userId = tonumber(target)
-		if userId then
-			unbanPlayer(userId)
-		end
-	end,
+    if command == "kick" and isModerator(player) and targetPlayer then
+        targetPlayer:Kick("You have been kicked from the server.")
+    elseif command == "ban" and isAdmin(player) and targetPlayer then
+        banPlayer(targetPlayer.UserId)
+        targetPlayer:Kick("You have been banned from the server.")
+    elseif command == "unban" and isAdmin(player) then
+        local userId = tonumber(targetName) or Players:GetUserIdFromNameAsync(targetName)
+        if userId then
+            unbanPlayer(userId)
+        end
+    elseif command == "tp" and isModerator(player) and splitMessage[3] then
+        local targetPlayer2 = findPlayerByName(splitMessage[3]) or Players:GetPlayerByUserId(tonumber(splitMessage[3]))
+        if targetPlayer and targetPlayer2 then
+            targetPlayer.Character:SetPrimaryPartCFrame(targetPlayer2.Character:GetPrimaryPartCFrame())
+        end
+    end
+end
 
-	["tp"] = function(sender, target1, target2)
-		if not hasPermission(sender, ModeratorRank) then
-			return
-		end
-		local targetPlayer1 = getPlayerByNameOrID(target1, sender)
-		local targetPlayer2 = getPlayerByNameOrID(target2, sender)
-		if targetPlayer1 and targetPlayer2 then
-			targetPlayer1.Character:SetPrimaryPartCFrame(targetPlayer2.Character.PrimaryPart.CFrame)
-		end
-	end,
-}
-
--- Player added handler to check if banned
 Players.PlayerAdded:Connect(function(player)
-	if isPlayerBanned(player.UserId) then
-		player:Kick("You are banned from this game.")
-	end
-
-	player.Chatted:Connect(function(msg)
-		if msg:sub(1, 1) == ";" then
-			local args = msg:sub(2):split(" ")
-			local cmd = args[1]
-			table.remove(args, 1)
-
-			if commands[cmd] then
-				commands[cmd](player, unpack(args))
-			end
-		end
-	end)
+    if isBanned(player.UserId) then
+        player:Kick("You are banned from this server.")
+    end
+    player.Chatted:Connect(function(message)
+        handleCommand(player, message)
+    end)
 end)
